@@ -165,7 +165,7 @@ sudo apt update && sudo apt install -y containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 ```
-Критически важно: Kubernetes kubelet использует cgroup-драйвер systemd, а containerd по умолчанию — cgroupfs. 
+Критически важно: Kubernetes kubelet использует cgroup-драйвер systemd, а containerd по умолчанию - cgroupfs. 
 
 *Переключаем:*
 ```bash
@@ -295,4 +295,52 @@ free -m
 kubectl get nodes -o wide
 kubectl get pods -n kube-system
 kubectl get pods -n calico-system
+```
+
+## 🧰 8. Установка Helm
+**Helm** - пакетный менеджер для Kubernetes. Устанавливается один раз на мастер-ноду и позволяет разворачивать целые стеки приложений одной командой.
+На данный момент Helm не используется, но установлен для будущих экспериментов.
+
+### 8.1 Установка из официального репозитория
+
+```bash
+sudo apt-get install curl gpg apt-transport-https --yes
+curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | \
+  gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/helm.gpg] https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | \
+  sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+sudo apt-get update
+sudo apt-get install helm
+```
+
+
+## 📊 9. Мониторинг (Metrics Server)
+
+Первоначально был развёрнут полный стек Prometheus + Grafana через Helm, но он потреблял слишком много ресурсов для двух небольших виртуальных машин, вызывая перезапуски системных подов и долгую загрузку дашбордов. Поэтому он был удалён и заменён на легковесный **Metrics Server** - официальный компонент Kubernetes, предоставляющий метрики CPU и памяти через `kubectl top`.
+
+### 9.1 Установка Metrics Server
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+
+### 9.2 Настройка (обязательно для kubeadm-кластеров)
+По умолчанию Metrics Server пытается проверить TLS‑сертификат kubelet, но в kubeadm-кластере сертификаты kubelet самоподписанные и не содержат нужных IP‑адресов в SAN. Решение - разрешить Metrics Server подключаться к kubelet без строгой проверки сертификата. Это приемлемо для учебных/домашних кластеров. 
+
+*Добавляем флаг --kubelet-insecure-tls:*
+```bash
+kubectl patch deployment metrics-server -n kube-system --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+```
+
+### 9.3 Проверка
+```bash
+kubectl top nodes
+```
+*Пример вывода:*
+```text
+NAME      CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+gantz     113m         2%     2445Mi          33%
+worker1   70m          3%     435Mi           29%
 ```
